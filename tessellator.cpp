@@ -84,9 +84,13 @@ int main() {
     Space space(WIDTH, HEIGHT);
     space.populate();
 
-    for (size_t col = 0; col < space.cell_width - 1; ++col) {
-        for (size_t row = 0; row < space.cell_height - 1; ++row) {
-            triangles.emplace_back(space.get(col, row), space.get(col + 1, row), space.get(col, row + 1));
+    for (size_t col = 0; col < space.cell_width; ++col) {
+        for (size_t row = 0; row < space.cell_height; ++row) {
+            if (col + 1 < space.cell_width && row + 1 < space.cell_height)
+                triangles.emplace_back(space.get(col, row), space.get(col + 1, row), space.get(col, row + 1));
+            if (col >= 1 && row >= 1)
+                triangles.emplace_back(space.get(col, row), space.get(col - 1, row), space.get(col, row - 1));
+            
         }
     }
 
