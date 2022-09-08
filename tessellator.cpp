@@ -1,3 +1,4 @@
+#include "perlin.h"
 #include "svg.h"
 #include <algorithm>
 #include <cmath>
@@ -100,9 +101,12 @@ struct Triangle {
     SVG_Polygon to_poly() const {
         SVG_Polygon poly;
         poly.points = {{a->x, a->y}, {b->x, b->y}, {c->x, c->y}};
-        poly.color = "rgb(" + std::to_string(rand() % 256) + ',' +
-                     std::to_string(rand() % 256) + ',' +
-                     std::to_string(rand() % 256) + ')';
+        double mx = (a->x + b->x + c->x) / 3 / WIDTH * 4;
+        double my = (a->y + b->y + c->y) / 3 / HEIGHT * 4;
+        poly.color =
+            "hsl(" + std::to_string((int)(perlin(mx, my) * 180 + 180)) + ", " +
+            std::to_string((int)(perlin(mx, my + HEIGHT) * 20 + 80)) + "%, " +
+            std::to_string((int)(perlin(mx + WIDTH, my) * 30 + 70)) + "%)";
         return poly;
     }
 };
