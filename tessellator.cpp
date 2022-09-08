@@ -136,16 +136,21 @@ struct Space {
     std::vector<Triangle> populate() {
         std::vector<Triangle> out;
         std::list<ExposedEdge> edges;
+        std::list<ExposedEdge> dead_edges;
+        // Add first point in middle
         double first_radius = frandrange(MIN_RADIUS, MAX_RADIUS);
         add(width / 2, height / 2, first_radius);
+        // Add second point around first point
         double second_radius = frandrange(MIN_RADIUS, MAX_RADIUS);
         double second_angle = frandrange(0, M_2_PI);
         add(width / 2 + (first_radius + second_radius) * cos(second_angle),
             height / 2 + (first_radius + second_radius) * sin(second_angle),
             second_radius);
+        // Set initial link/edges between first and second points
         establish_links(all[0], all[1]);
         edges.emplace_back(all[0], all[1]);
         edges.emplace_back(all[1], all[0]);
+        // Go!
         while (!edges.empty()) {
             double new_radius = frandrange(MIN_RADIUS, MAX_RADIUS);
             Coord potential =
@@ -187,7 +192,7 @@ struct Space {
                                 edges.remove(ExposedEdge(p, edges.front().a));
                                 edges.remove(ExposedEdge(edges.front().b, p));
                                 // Add a new edge if applicable
-                                edges.emplace_back(edges.front().b, p);
+                                edges.emplace_back(edges.front().a, p);
                             }
                             goto endloop;
                         }
@@ -202,6 +207,9 @@ struct Space {
                         // Put it for later
                         edges.emplace_back(edges.front());
                         --edges.back().attempts;
+                    } else {
+                        // Put it in dead edges to figure out later
+                        dead_edges.emplace_back(edges.front());
                     }
                     goto endloop;
                 }
@@ -233,6 +241,49 @@ struct Space {
 
         endloop:
             edges.pop_front();
+        }
+        // Now get the extra thingies
+        // First, sort the edges by originating point
+        std::map<Point*, std::list<ExposedEdge>> edge_map;
+        while (!dead_edges.empty()) {
+            edge_map.emplace(dead_edges.front().a, std::list<ExposedEdge>{})
+                .first->second.push_back(dead_edges.front());
+            dead_edges.pop_front();
+        }
+        // Then try to find loops and fill them
+        // Currently only 3-point
+        for (auto& point : edge_map) {
+            auto itr_a = point.second.begin();
+            for (; itr_a != point.second.end();
+                 itr_a = point.second.erase(itr_a)) {
+                // Find the second point
+                auto find_b = edge_map.find(itr_a->b);
+                if (find_b == edge_map.end())
+                    continue;
+                // Look through its edges
+                auto itr_b = find_b->second.begin();
+                for (; itr_b != find_b->second.end(); ++itr_b) {
+                    // Find the third point
+                    auto find_c = edge_map.find(itr_b->b);
+                    if (find_c == edge_map.end())
+                        continue;
+                    // Look through its edges for the first point
+                    auto itr_c = find_c->second.begin();
+                    for (; itr_c != find_c->second.end(); ++itr_c) {
+                        if (itr_c->b == itr_a->a) {
+                            // Loop found!
+                            out.emplace_back(itr_a->a, itr_a->b, itr_b->b);
+                            increment_links(itr_a->a, itr_a->b, itr_b->b);
+                            find_c->second.erase(itr_c);
+                            find_b->second.erase(itr_b);
+                            goto found_tri;
+                        }
+                    }
+                }
+            // If we have (or haven't) found a loop then this first edge is no
+            // longer needed
+            found_tri:;
+            }
         }
         return out;
     }
