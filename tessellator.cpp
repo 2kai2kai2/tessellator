@@ -1,3 +1,4 @@
+#include "lib.h"
 #include "perlin.h"
 #include "svg.h"
 #include <algorithm>
@@ -10,13 +11,9 @@
 const long long HEIGHT = 1024;
 const long long WIDTH = 1024;
 const long long MIN_RADIUS = 16;
-const long long MAX_RADIUS = 128;
+const long long MAX_RADIUS = 64;
 
 typedef std::pair<double, double> Coord;
-
-double frandrange(double min, double max) {
-    return min + abs(remainder(fabs(rand() / 1000000.0), max - min));
-}
 
 struct Point {
     double x;
@@ -85,7 +82,9 @@ struct ExposedEdge {
     Point* b;
     unsigned char attempts;
 
-    /* Always placing triangle in the positive rotation with p1 as origin */
+    /* Always placing triangle in the negative rotation with p1 as origin
+    This is 'right' in a normal coordinate grid, or 'left' on a computer
+    canvas*/
     ExposedEdge(Point* p1, Point* p2) : a(p1), b(p2), attempts(10) {}
 
     bool operator==(const ExposedEdge& other) const {
@@ -103,10 +102,9 @@ struct Triangle {
         poly.points = {{a->x, a->y}, {b->x, b->y}, {c->x, c->y}};
         double mx = (a->x + b->x + c->x) / 3 / WIDTH * 4;
         double my = (a->y + b->y + c->y) / 3 / HEIGHT * 4;
-        poly.color =
-            "hsl(" + std::to_string((int)(perlin(mx, my) * 180 + 180)) + ", " +
-            std::to_string((int)(perlin(mx, my + HEIGHT) * 20 + 80)) + "%, " +
-            std::to_string((int)(perlin(mx + WIDTH, my) * 30 + 70)) + "%)";
+        poly.color = to_hsl(perlin(mx, my) * 180 + 180,
+                            perlin(mx, my + HEIGHT) * 20 + 80,
+                            perlin(mx + WIDTH, my) * 30 + 70);
         return poly;
     }
 };
@@ -165,10 +163,10 @@ struct Space {
                             out.emplace_back(p, edges.front().a,
                                              edges.front().b);
 
-                            if (p->x >= 0 && p->y >= 0 && p->x < width &&
-                                p->y < height) {
-                                // Remove the matching edge
+                            if (in_range(width, height, p->x, p->y)) {
+                                // Remove the interior edges if applicable
                                 edges.remove(ExposedEdge(p, edges.front().a));
+                                edges.remove(ExposedEdge(edges.front().b, p));
                                 // Add a new edge if applicable
                                 edges.emplace_back(p, edges.front().b);
                             }
@@ -184,9 +182,9 @@ struct Space {
                             out.emplace_back(p, edges.front().a,
                                              edges.front().b);
 
-                            if (p->x >= 0 && p->y >= 0 && p->x < width &&
-                                p->y < height) {
-                                // Remove the matching edge
+                            if (in_range(width, height, p->x, p->y)) {
+                                // Remove the interior edges
+                                edges.remove(ExposedEdge(p, edges.front().a));
                                 edges.remove(ExposedEdge(edges.front().b, p));
                                 // Add a new edge if applicable
                                 edges.emplace_back(edges.front().b, p);
@@ -214,13 +212,12 @@ struct Space {
             establish_links(all.back(), edges.front().b);
             increment_links(all.back(), edges.front().a, edges.front().b);
             out.emplace_back(all.back(), edges.front().a, edges.front().b);
-            if (all.back()->x >= 0 && all.back()->y >= 0 &&
-                all.back()->x < width && all.back()->y < height) {
+            if (in_range(width, height, all.back()->x, all.back()->y)) {
                 edges.emplace_back(edges.front().a, all.back());
                 edges.emplace_back(all.back(), edges.front().b);
                 // Check if we can add any new edges
                 for (Point* p : all) {
-                    if (p->x < 0 || width <= p->x || p->y < 0 || height <= p->y)
+                    if (!in_range(width, height, p->x, p->y))
                         continue;
                     else if (p == all.back() || all.back()->links.count(p))
                         continue;
