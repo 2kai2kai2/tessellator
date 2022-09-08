@@ -1,4 +1,5 @@
 #include <cmath>
+#include <list>
 #include <string>
 
 inline double frandrange(double min, double max) {
@@ -36,4 +37,27 @@ inline std::string to_hsl(double hue, double saturation, double light) {
 
 inline bool in_range(double width, double height, double x, double y) {
     return 0 <= x && x < width && 0 <= y && y < height;
+}
+
+template <class T>
+typename std::list<T>::iterator loop_next(std::list<T>& loop,
+                                          typename std::list<T>::iterator itr) {
+    ++itr;
+    if (itr == loop.end())
+        return loop.begin();
+    else
+        return itr;
+}
+
+template <class T>
+typename std::list<T>::iterator loop_prev(std::list<T>& loop,
+                                          typename std::list<T>::iterator itr) {
+    if (itr == loop.begin())
+        return --loop.end();
+    else
+        return --itr;
+}
+
+inline double normalize_rad(double rad) {
+    return fmod(fmod(rad, M_PI * 2) + M_PI * 2, M_PI * 2);
 }

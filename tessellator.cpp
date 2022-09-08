@@ -13,6 +13,8 @@ const long long WIDTH = 1024;
 const long long MIN_RADIUS = 16;
 const long long MAX_RADIUS = 64;
 
+std::vector<SVG_Shape*> bonus_draw;
+
 typedef std::pair<double, double> Coord;
 
 struct Point {
@@ -55,6 +57,9 @@ struct Point {
         double dy = y - other.second;
         return dx * dx + dy * dy;
     }
+    friend double vec_angle(const Point* origin, const Point* dir) {
+        return atan2(dir->y - origin->y, dir->x - origin->x) + M_PI_2;
+    }
 };
 
 std::pair<Coord, Coord> intersects(const Point* p1, const Point* p2,
@@ -90,6 +95,7 @@ struct ExposedEdge {
     bool operator==(const ExposedEdge& other) const {
         return a == other.a && b == other.b;
     }
+    inline double angle() const { return vec_angle(a, b); }
 };
 struct Triangle {
     Point* a;
@@ -142,7 +148,7 @@ struct Space {
         add(width / 2, height / 2, first_radius);
         // Add second point around first point
         double second_radius = frandrange(MIN_RADIUS, MAX_RADIUS);
-        double second_angle = frandrange(0, M_2_PI);
+        double second_angle = frandrange(0, M_PI * 2);
         add(width / 2 + (first_radius + second_radius) * cos(second_angle),
             height / 2 + (first_radius + second_radius) * sin(second_angle),
             second_radius);
@@ -247,39 +253,94 @@ struct Space {
             dead_edges.pop_front();
         }
         // Then try to find loops and fill them
-        // Currently only 3-point
+        std::list<std::list<ExposedEdge>> loops;
         for (auto& point : edge_map) {
-            auto itr_a = point.second.begin();
-            for (; itr_a != point.second.end();
-                 itr_a = point.second.erase(itr_a)) {
-                // Find the second point
-                auto find_b = edge_map.find(itr_a->b);
-                if (find_b == edge_map.end())
+            // Setup initial options
+            std::list<std::list<ExposedEdge>> paths;
+            for (const ExposedEdge& edge : point.second)
+                paths.push_back({edge});
+            // Build paths
+            while (!paths.empty()) {
+                auto next = edge_map.find(paths.front().back().b);
+                if (next == edge_map.end()) {
+                    paths.pop_front();
                     continue;
-                // Look through its edges
-                auto itr_b = find_b->second.begin();
-                for (; itr_b != find_b->second.end(); ++itr_b) {
-                    // Find the third point
-                    auto find_c = edge_map.find(itr_b->b);
-                    if (find_c == edge_map.end())
-                        continue;
-                    // Look through its edges for the first point
-                    auto itr_c = find_c->second.begin();
-                    for (; itr_c != find_c->second.end(); ++itr_c) {
-                        if (itr_c->b == itr_a->a) {
-                            // Loop found!
-                            out.emplace_back(itr_a->a, itr_a->b, itr_b->b);
-                            increment_links(itr_a->a, itr_a->b, itr_b->b);
-                            find_c->second.erase(itr_c);
-                            find_b->second.erase(itr_b);
-                            goto found_tri;
-                        }
+                }
+                // Check all possible next options
+                for (auto& n : next->second) {
+                    // See if we've found the loop
+                    if (n.b == point.first) {
+                        if (paths.front().size() == 1)
+                            goto loops_next_option; // don't form 2-point loops
+                        paths.front().push_back(n);
+                        loops.push_back(paths.front());
+                        // Delete all the ExposedEdges
+                        for (const ExposedEdge& edge : paths.front())
+                            edge_map[edge.a].remove(edge);
+                        goto loops_next_point;
+                    }
+                    // See if it's crossed over our existing path
+                    for (const ExposedEdge& edge : paths.front()) {
+                        if (n.b == edge.a)
+                            goto loops_next_option;
+                    }
+                    // Otherwise add it as an option
+                    paths.push_back(paths.front());
+                    paths.back().push_back(n);
+                loops_next_option:;
+                }
+                paths.pop_front();
+            }
+        loops_next_point:;
+        }
+        // ====================
+        for (const std::list<ExposedEdge>& l : loops) {
+            std::string color = to_hsl(rand(), 100, 60);
+            for (const ExposedEdge& e : l) {
+                SVG_Line* line = new SVG_Line(e.a->x, e.a->y, e.b->x, e.b->y);
+                line->color = color;
+                line->width = 2;
+                bonus_draw.push_back(line);
+            }
+        }
+        // Clean up the loops
+        for (std::list<ExposedEdge>& loop : loops) {
+            if (loop.size() < 3)
+                throw std::runtime_error(
+                    "Loop should not be less than size 3!");
+            while (loop.size() > 3) {
+                // Find the closest two
+                auto closest = loop.end();
+                double closest_dist2 = INFINITY;
+                auto itr = loop.begin();
+                for (; itr != loop.end(); ++itr) {
+                    auto next = loop_next(loop, itr);
+                    double dist = itr->a->dist2(next->b);
+                    if (dist < closest_dist2) {
+                        // Check to avoid convexity
+                        if (normalize_rad(next->angle() - itr->angle()) < M_PI)
+                            continue;
+                        closest = itr;
+                        closest_dist2 = dist;
                     }
                 }
-            // If we have (or haven't) found a loop then this first edge is no
-            // longer needed
-            found_tri:;
+                // Make sure there's no funny business
+                if (closest == loop.end())
+                    throw std::runtime_error(
+                        "No drawable links in a loop larger than 3! This "
+                        "shouldn't happen.");
+                // Draw triangle
+                auto closest_next = loop_next(loop, closest);
+                out.emplace_back(closest->a, closest->b, closest_next->b);
+                establish_links(closest->a, closest_next->b);
+                increment_links(closest->a, closest->b, closest_next->b);
+                // Shrink loop
+                loop.emplace(closest, closest->a, closest_next->b);
+                loop.erase(closest);
+                loop.erase(closest_next);
             }
+            out.emplace_back(loop.front().a, loop.front().b, loop.back().a);
+            increment_links(loop.front().a, loop.front().b, loop.back().a);
         }
         return out;
     }
@@ -299,6 +360,9 @@ int main() {
     // Overlay circles
     for (const Point* point : space.all)
         svg.shapes.push_back(new SVG_Circle(point->to_circle()));
+    // Overlay bonus_draw
+    for (SVG_Shape* bonus : bonus_draw)
+        svg.shapes.push_back(bonus);
 
     std::ofstream file("out.svg");
     file << "<!DOCTYPE svg>\n" << svg << std::endl;

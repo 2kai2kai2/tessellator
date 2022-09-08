@@ -12,6 +12,28 @@ struct SVG_Shape {
     }
 };
 
+struct SVG_Line : SVG_Shape {
+    double x1;
+    double y1;
+    double x2;
+    double y2;
+    std::string color;
+    int width;
+
+    SVG_Line(double x1, double y1, double x2, double y2)
+        : x1(x1), y1(y1), x2(x2), y2(y2), width(-1) {}
+
+    std::ostream& print(std::ostream& a) const override {
+        a << "<line x1=\"" << x1 << "\" y1=\"" << y1 << "\" x2=\"" << x2
+          << "\" y2=\"" << y2 << "\" style=\"";
+        if (!color.empty())
+            a << "stroke:" << color << ";";
+        if (width >= 0)
+            a << "stroke-width:" << width << ";";
+        return a << "\" />";
+    }
+};
+
 struct SVG_Polygon : SVG_Shape {
     std::list<std::pair<long long, long long>> points;
     std::string color;
