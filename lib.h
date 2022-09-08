@@ -5,6 +5,16 @@ inline double frandrange(double min, double max) {
     return min + fabs(fmod(rand() / 1000000.0, max - min));
 }
 
+template <class T>
+const T& cap_range(const T& value, const T& min, const T& max) {
+    if (value > max)
+        return max;
+    else if (value < min)
+        return min;
+    else
+        return value;
+}
+
 /**
  * @brief Turns values for hue, shade, and light into an SVG-usable string like
  * "hsl(10, 80%, 90%)"
@@ -18,8 +28,8 @@ inline double frandrange(double min, double max) {
  */
 inline std::string to_hsl(double hue, double saturation, double light) {
     hue = fmod(fabs(hue), 360);
-    saturation = fmin(100, fmax(0, saturation));
-    light = fmin(100, fmax(0, light));
+    saturation = cap_range(saturation, 0.0, 100.0);
+    light = cap_range(light, 0.0, 100.0);
     return "hsl(" + std::to_string(hue) + ", " + std::to_string(saturation) +
            "%, " + std::to_string(light) + "%)";
 }

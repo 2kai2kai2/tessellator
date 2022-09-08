@@ -126,11 +126,11 @@ struct Space {
 
     void add(double x, double y, double radius) {
         all.push_back(new Point(x, y, radius));
-        long long cell_x = x / MAX_RADIUS;
-        long long cell_y = y / MAX_RADIUS;
-        if (0 <= cell_x && cell_x < cell_width && 0 <= cell_y &&
-            cell_y < cell_height)
-            arr[x / MAX_RADIUS][y / MAX_RADIUS].push_back(all.back());
+
+        size_t cell_x = cap_range<long long>(x / MAX_RADIUS, 0, cell_width - 1);
+        size_t cell_y =
+            cap_range<long long>(y / MAX_RADIUS, 0, cell_height - 1);
+        arr[cell_x][cell_y].push_back(all.back());
     }
 
     std::vector<Triangle> populate() {
@@ -160,59 +160,55 @@ struct Space {
                 if (p->dist2(potential) < pow(MIN_RADIUS, 2)) {
                     // They are close
                     for (auto link : edges.front().a->links) {
-                        if (link.second < 2 && link.first == p) {
-                            // Epic! we can use this
-                            establish_links(p, edges.front().b);
-                            increment_links(p, edges.front().a,
-                                            edges.front().b);
-                            out.emplace_back(p, edges.front().a,
-                                             edges.front().b);
+                        if (link.second >= 2 || link.first != p)
+                            continue;
+                        // Epic! we can use this
+                        establish_links(p, edges.front().b);
+                        increment_links(p, edges.front().a, edges.front().b);
+                        out.emplace_back(p, edges.front().a, edges.front().b);
 
-                            if (in_range(width, height, p->x, p->y)) {
-                                // Remove the interior edges if applicable
-                                edges.remove(ExposedEdge(p, edges.front().a));
-                                edges.remove(ExposedEdge(edges.front().b, p));
-                                // Add a new edge if applicable
-                                edges.emplace_back(p, edges.front().b);
-                            }
-                            goto endloop;
+                        if (in_range(width, height, p->x, p->y)) {
+                            // Remove the interior edges if applicable
+                            edges.remove(ExposedEdge(p, edges.front().a));
+                            edges.remove(ExposedEdge(edges.front().b, p));
+                            // Add a new edge if applicable
+                            edges.emplace_back(p, edges.front().b);
                         }
+                        goto endloop;
                     }
                     for (auto link : edges.front().b->links) {
-                        if (link.second < 2 && link.first == p) {
-                            // Epic! we can use this
-                            establish_links(p, edges.front().a);
-                            increment_links(p, edges.front().a,
-                                            edges.front().b);
-                            out.emplace_back(p, edges.front().a,
-                                             edges.front().b);
+                        if (link.second >= 2 || link.first != p)
+                            continue;
+                        // Epic! we can use this
+                        establish_links(p, edges.front().a);
+                        increment_links(p, edges.front().a, edges.front().b);
+                        out.emplace_back(p, edges.front().a, edges.front().b);
 
-                            if (in_range(width, height, p->x, p->y)) {
-                                // Remove the interior edges
-                                edges.remove(ExposedEdge(p, edges.front().a));
-                                edges.remove(ExposedEdge(edges.front().b, p));
-                                // Add a new edge if applicable
-                                edges.emplace_back(edges.front().a, p);
-                            }
-                            goto endloop;
+                        if (in_range(width, height, p->x, p->y)) {
+                            // Remove the interior edges
+                            edges.remove(ExposedEdge(p, edges.front().a));
+                            edges.remove(ExposedEdge(edges.front().b, p));
+                            // Add a new edge if applicable
+                            edges.emplace_back(edges.front().a, p);
                         }
+                        goto endloop;
                     }
                 }
             }
             // Check if this overlaps with anything
             for (const Point* p : all) {
-                if (p->dist2(potential) < pow(p->radius + new_radius - 2, 2)) {
-                    // Bad overlap
-                    if (edges.front().attempts > 0) {
-                        // Put it for later
-                        edges.emplace_back(edges.front());
-                        --edges.back().attempts;
-                    } else {
-                        // Put it in dead edges to figure out later
-                        dead_edges.emplace_back(edges.front());
-                    }
-                    goto endloop;
+                if (p->dist2(potential) >= pow(p->radius + new_radius - 2, 2))
+                    continue;
+                // Here an overlap has been found
+                if (edges.front().attempts > 0) {
+                    // Put it for later
+                    edges.emplace_back(edges.front());
+                    --edges.back().attempts;
+                } else {
+                    // Put it in dead edges to figure out later
+                    dead_edges.emplace_back(edges.front());
                 }
+                goto endloop;
             }
             // If not, keep going
             add(potential.first, potential.second, new_radius);
@@ -226,9 +222,9 @@ struct Space {
                 // Check if we can add any new edges
                 for (Point* p : all) {
                     if (!in_range(width, height, p->x, p->y))
-                        continue;
+                        continue; // Don't make edges with poins out of range
                     else if (p == all.back() || all.back()->links.count(p))
-                        continue;
+                        continue; // Only if there isn't already something
                     else if (p->dist2(potential) <
                              pow(p->radius + new_radius + MIN_RADIUS, 2)) {
                         // These could have an edge
