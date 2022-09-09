@@ -82,6 +82,23 @@ struct SVG_Circle : SVG_Shape {
         return a << "/>";
     }
 };
+struct SVG_Text : SVG_Shape {
+    double x;
+    double y;
+    std::string text;
+    std::string color;
+
+    SVG_Text(double x, double y, const std::string& text,
+             const std::string& color = "")
+        : x(x), y(y), text(text), color(color) {}
+
+    std::ostream& print(std::ostream& a) const override {
+        a << "<text x=\"" << x << "\" y=\"" << y << '"';
+        if (!color.empty())
+            a << " fill=\"" << color << '"';
+        return a << '>' << text << "</text>";
+    }
+};
 
 struct SVG {
     size_t height;

@@ -8,8 +8,8 @@
 #include <random>
 #include <vector>
 
-const long long HEIGHT = 1024;
-const long long WIDTH = 1024;
+const long long HEIGHT = 1024 * 8;
+const long long WIDTH = 1024 * 8;
 const long long MIN_RADIUS = 16;
 const long long MAX_RADIUS = 64;
 
@@ -96,6 +96,12 @@ struct ExposedEdge {
         return a == other.a && b == other.b;
     }
     inline double angle() const { return vec_angle(a, b); }
+    friend double interior_angle(const ExposedEdge& first,
+                                 const ExposedEdge& second) {
+        if (first.b != second.a)
+            throw std::invalid_argument("first.b must equal second.a");
+        return normalize_rad(second.angle() - first.angle() + M_PI);
+    }
 };
 struct Triangle {
     Point* a;
@@ -106,8 +112,8 @@ struct Triangle {
     SVG_Polygon to_poly() const {
         SVG_Polygon poly;
         poly.points = {{a->x, a->y}, {b->x, b->y}, {c->x, c->y}};
-        double mx = (a->x + b->x + c->x) / 3 / WIDTH * 4;
-        double my = (a->y + b->y + c->y) / 3 / HEIGHT * 4;
+        double mx = (a->x + b->x + c->x) / 3 / (MAX_RADIUS * 4);
+        double my = (a->y + b->y + c->y) / 3 / (MAX_RADIUS * 4);
         poly.color = to_hsl(perlin(mx, my) * 180 + 180,
                             perlin(mx, my + HEIGHT) * 20 + 80,
                             perlin(mx + WIDTH, my) * 30 + 70);
@@ -116,6 +122,10 @@ struct Triangle {
 };
 
 struct Space {
+    typedef std::list<ExposedEdge> Path;
+    typedef std::list<ExposedEdge> EdgeList;
+    typedef std::map<Point*, EdgeList> EdgeMap;
+
     double width;
     double height;
     size_t cell_width;
@@ -129,20 +139,42 @@ struct Space {
           arr(cell_width, std::vector<std::list<Point*>>(cell_height,
                                                          std::list<Point*>())) {
     }
+    inline size_t get_cell_x(double x) {
+        return cap_range<long long>(x / MAX_RADIUS, 0, cell_width - 1);
+    }
+    inline size_t get_cell_y(double y) {
+        return cap_range<long long>(y / MAX_RADIUS, 0, cell_height - 1);
+    }
+
+    std::list<Point*> get_neighbors(size_t cell_x, size_t cell_y,
+                                    size_t range = 1) {
+        std::list<Point*> out;
+        for (size_t x = std::max(cell_x, range) - range;
+             x <= std::min(cell_x + range, cell_width - 1); ++x) {
+            for (size_t y = std::max(cell_y, range) - range;
+                 y <= std::min(cell_y + range, cell_height - 1); ++y) {
+                // Copy all from other
+                out.insert(out.end(), arr[x][y].begin(), arr[x][y].end());
+            }
+        }
+        return out;
+    }
+    inline std::list<Point*> get_neighbors(const Coord& c, size_t range = 1) {
+        return get_neighbors(get_cell_x(c.first), get_cell_y(c.second), range);
+    }
+    inline std::list<Point*> get_neighbors(const Point* p, size_t range = 1) {
+        return get_neighbors(get_cell_x(p->x), get_cell_y(p->y), range);
+    }
 
     void add(double x, double y, double radius) {
         all.push_back(new Point(x, y, radius));
-
-        size_t cell_x = cap_range<long long>(x / MAX_RADIUS, 0, cell_width - 1);
-        size_t cell_y =
-            cap_range<long long>(y / MAX_RADIUS, 0, cell_height - 1);
-        arr[cell_x][cell_y].push_back(all.back());
+        arr[get_cell_x(x)][get_cell_y(y)].push_back(all.back());
     }
 
     std::vector<Triangle> populate() {
         std::vector<Triangle> out;
-        std::list<ExposedEdge> edges;
-        std::list<ExposedEdge> dead_edges;
+        EdgeList edges;
+        EdgeList dead_edges;
         // Add first point in middle
         double first_radius = frandrange(MIN_RADIUS, MAX_RADIUS);
         add(width / 2, height / 2, first_radius);
@@ -162,7 +194,7 @@ struct Space {
             Coord potential =
                 intersects(edges.front().a, edges.front().b, new_radius).first;
             // Now check if we can connect 3 in a triangle
-            for (Point* p : all) {
+            for (Point* p : get_neighbors(potential)) {
                 if (p->dist2(potential) < pow(MIN_RADIUS, 2)) {
                     // They are close
                     for (auto link : edges.front().a->links) {
@@ -177,7 +209,8 @@ struct Space {
                             // Remove the interior edges if applicable
                             edges.remove(ExposedEdge(p, edges.front().a));
                             edges.remove(ExposedEdge(edges.front().b, p));
-                            // Add a new edge if applicable
+                            // Add a new edge
+                            edges.remove(ExposedEdge(p, edges.front().b));
                             edges.emplace_back(p, edges.front().b);
                         }
                         goto endloop;
@@ -194,7 +227,8 @@ struct Space {
                             // Remove the interior edges
                             edges.remove(ExposedEdge(p, edges.front().a));
                             edges.remove(ExposedEdge(edges.front().b, p));
-                            // Add a new edge if applicable
+                            // Add a new edge
+                            edges.remove(ExposedEdge(edges.front().a, p));
                             edges.emplace_back(edges.front().a, p);
                         }
                         goto endloop;
@@ -202,7 +236,7 @@ struct Space {
                 }
             }
             // Check if this overlaps with anything
-            for (const Point* p : all) {
+            for (const Point* p : get_neighbors(potential, 2)) {
                 if (p->dist2(potential) >= pow(p->radius + new_radius - 2, 2))
                     continue;
                 // Here an overlap has been found
@@ -226,7 +260,7 @@ struct Space {
                 edges.emplace_back(edges.front().a, all.back());
                 edges.emplace_back(all.back(), edges.front().b);
                 // Check if we can add any new edges
-                for (Point* p : all) {
+                for (Point* p : get_neighbors(potential, 3)) {
                     if (!in_range(width, height, p->x, p->y))
                         continue; // Don't make edges with poins out of range
                     else if (p == all.back() || all.back()->links.count(p))
@@ -246,65 +280,90 @@ struct Space {
         }
         // Now get the extra thingies
         // First, sort the edges by originating point
-        std::map<Point*, std::list<ExposedEdge>> edge_map;
+        EdgeMap edge_map;
         while (!dead_edges.empty()) {
-            edge_map.emplace(dead_edges.front().a, std::list<ExposedEdge>{})
+            edge_map.emplace(dead_edges.front().a, EdgeList{})
                 .first->second.push_back(dead_edges.front());
             dead_edges.pop_front();
         }
         // Then try to find loops and fill them
-        std::list<std::list<ExposedEdge>> loops;
+        std::list<Path> loops;
         for (auto& point : edge_map) {
             // Setup initial options
-            std::list<std::list<ExposedEdge>> paths;
+            std::list<Path> paths;
             for (const ExposedEdge& edge : point.second)
                 paths.push_back({edge});
             // Build paths
             while (!paths.empty()) {
-                auto next = edge_map.find(paths.front().back().b);
-                if (next == edge_map.end()) {
+                Path& _path = paths.front();
+                EdgeMap::iterator options = edge_map.find(_path.back().b);
+                if (options == edge_map.end()) {
                     paths.pop_front();
                     continue;
                 }
                 // Check all possible next options
-                for (auto& n : next->second) {
+                for (ExposedEdge& next : options->second) {
                     // See if we've found the loop
-                    if (n.b == point.first) {
-                        if (paths.front().size() == 1)
+                    if (next.b == point.first) {
+                        if (_path.size() == 1)
                             goto loops_next_option; // don't form 2-point loops
-                        paths.front().push_back(n);
-                        loops.push_back(paths.front());
+                        _path.push_back(next);
+                        // Check to make sure it's interior angles
+                        double angleSum = 0;
+                        for (Path::iterator itr = _path.begin();
+                             itr != _path.end(); ++itr) {
+                            angleSum +=
+                                interior_angle(*itr, *loop_next(_path, itr));
+                        }
+                        if (fabs(angleSum - (_path.size() * M_PI - 2 * M_PI)) >
+                            0.001) {
+                            _path.pop_back();
+                            goto loops_next_option;
+                        }
+                        // Ok this is a loop!
+                        loops.push_back(_path);
                         // Delete all the ExposedEdges
-                        for (const ExposedEdge& edge : paths.front())
+                        for (const ExposedEdge& edge : _path)
                             edge_map[edge.a].remove(edge);
                         goto loops_next_point;
                     }
                     // See if it's crossed over our existing path
-                    for (const ExposedEdge& edge : paths.front()) {
-                        if (n.b == edge.a)
+                    for (const ExposedEdge& edge : _path) {
+                        if (next.b == edge.a)
                             goto loops_next_option;
                     }
                     // Otherwise add it as an option
-                    paths.push_back(paths.front());
-                    paths.back().push_back(n);
+                    paths.push_back(_path);
+                    paths.back().push_back(next);
                 loops_next_option:;
                 }
                 paths.pop_front();
             }
         loops_next_point:;
         }
-        // ====================
-        for (const std::list<ExposedEdge>& l : loops) {
+#ifdef DEBUG
+        for (Path& l : loops) {
             std::string color = to_hsl(rand(), 100, 60);
-            for (const ExposedEdge& e : l) {
-                SVG_Line* line = new SVG_Line(e.a->x, e.a->y, e.b->x, e.b->y);
+            double angleSum = 0;
+            double x_sum = 0;
+            double y_sum = 0;
+            for (auto e = l.begin(); e != l.end(); ++e) {
+                angleSum += interior_angle(*e, *loop_next(l, e));
+                x_sum += e->a->x;
+                y_sum += e->a->y;
+                SVG_Line* line =
+                    new SVG_Line(e->a->x, e->a->y, e->b->x, e->b->y);
                 line->color = color;
                 line->width = 2;
                 bonus_draw.push_back(line);
             }
+            bonus_draw.push_back(
+                new SVG_Text(x_sum / l.size(), y_sum / l.size(),
+                             std::to_string(angleSum * 180 / M_PI)));
         }
+#endif
         // Clean up the loops
-        for (std::list<ExposedEdge>& loop : loops) {
+        for (Path& loop : loops) {
             if (loop.size() < 3)
                 throw std::runtime_error(
                     "Loop should not be less than size 3!");
@@ -357,12 +416,14 @@ int main() {
     for (const Triangle& tri : triangles)
         svg.shapes.push_back(new SVG_Polygon(tri.to_poly()));
 
+#ifdef DEBUG
     // Overlay circles
     for (const Point* point : space.all)
         svg.shapes.push_back(new SVG_Circle(point->to_circle()));
     // Overlay bonus_draw
     for (SVG_Shape* bonus : bonus_draw)
         svg.shapes.push_back(bonus);
+#endif
 
     std::ofstream file("out.svg");
     file << "<!DOCTYPE svg>\n" << svg << std::endl;
