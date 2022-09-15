@@ -100,3 +100,20 @@ struct PerlinGen {
                       // 1, multiply by 0.5 and add 0.5
     }
 };
+
+struct ColorMap {
+    PerlinGen colorGen, satGen, lightGen;
+
+    std::string operator()(double x, double y) const {
+        double color = colorGen.perlin(x / 8, y / 8) * 720 + 360 +
+                       colorGen.perlin(x, y) * 90;
+        color = fmod(fabs(color), 360.0);
+        double saturation = satGen.perlin(x / 2, y / 2) * 10 +
+                            satGen.perlin(x, y) * 10 +
+                            satGen.perlin(x * 4, y * 4) * 20 + 60;
+        double light = lightGen.perlin(x / 4, y / 4) * 10 +
+                       lightGen.perlin(x, y) * 10 +
+                       lightGen.perlin(x * 4, y * 4) * 5 + 50;
+        return to_hsl(color, saturation, light);
+    }
+};

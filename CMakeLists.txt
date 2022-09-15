@@ -10,3 +10,5 @@ add_executable(tessellator
         perlin.h
         svg.h
         tessellator.cpp)
+
+# add_compile_definitions(SIMPLE_COLOR)

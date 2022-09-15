@@ -13,6 +13,7 @@ const long long MIN_RADIUS = 16;
 const long long MAX_RADIUS = 64;
 
 std::vector<SVG_Shape*> bonus_draw;
+std::list<SVG_Def*> _defs;
 
 typedef std::pair<double, double> Coord;
 
@@ -108,19 +109,36 @@ struct Triangle {
     Triangle(Point* a, Point* b, Point* c) : a(a), b(b), c(c) {}
 
     SVG_Polygon to_poly() const {
-        static PerlinGen colorGen, satGen, lightGen;
+        static ColorMap colorMap;
         SVG_Polygon poly;
         poly.points = {{a->x, a->y}, {b->x, b->y}, {c->x, c->y}};
+#ifdef SIMPLE_COLOR
         double mx = (a->x + b->x + c->x) / 3 / (MAX_RADIUS * 4);
         double my = (a->y + b->y + c->y) / 3 / (MAX_RADIUS * 4);
-        double color = colorGen.perlin(mx / 16, my / 16) * 720 + 360 +
-                       colorGen.perlin(mx, my) * 90;
-        color = fmod(fabs(color), 360.0);
-        double saturation = satGen.perlin(mx / 2, my / 2 + HEIGHT) * 7 +
-                            satGen.perlin(mx * 4, my * 4 - HEIGHT) * 18 + 75;
-        double light = lightGen.perlin(mx / 4 + WIDTH, my / 4) * 10 +
-                       lightGen.perlin(mx * 4, my * 4 + HEIGHT) * 5 + 50;
-        poly.color = to_hsl(color, saturation, light);
+
+        poly.color = colorMap(mx, my);
+#else
+        double mx = (a->x + b->x + c->x) / 3 / (MAX_RADIUS * 4);
+        double my = (a->y + b->y + c->y) / 3 / (MAX_RADIUS * 4);
+
+        double min_x = std::min({a->x, b->x, c->x}) / (MAX_RADIUS * 4);
+        double max_x = std::max({a->x, b->x, c->x}) / (MAX_RADIUS * 4);
+        double min_y = std::min({a->y, b->y, c->y}) / (MAX_RADIUS * 4);
+        double max_y = std::max({a->y, b->y, c->y}) / (MAX_RADIUS * 4);
+
+        double m_radius = ((max_x - min_x) + (max_y - min_y)) / 2 / 4;
+        double c_angle = frandrange(0, 2 * M_PI);
+
+        std::string color1 = colorMap(mx + m_radius * std::cos(c_angle),
+                                      my + m_radius * std::sin(c_angle));
+        std::string color2 = colorMap(mx + m_radius * std::cos(c_angle + M_PI),
+                                      my + m_radius * std::sin(c_angle + M_PI));
+        static size_t gradient_num = 0;
+        std::string gradientID = "G" + std::to_string(gradient_num++);
+        _defs.push_back(
+            new SVG_LinearGradient(gradientID, 100, 0, 0, 100, color1, color2));
+        poly.color = "url(#" + gradientID + ')';
+#endif
         return poly;
     }
 };
@@ -420,6 +438,7 @@ int main() {
     SVG svg(HEIGHT, WIDTH);
     for (const Triangle& tri : triangles)
         svg.shapes.push_back(new SVG_Polygon(tri.to_poly()));
+    svg.defs = _defs;
 
 #ifdef DEBUG
     // Overlay circles

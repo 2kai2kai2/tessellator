@@ -6,14 +6,17 @@
 #include <set>
 #include <utility>
 
-struct SVG_Shape {
-    virtual ~SVG_Shape() = default;
+struct SVG_Tag {
+    virtual ~SVG_Tag() = default;
 
     virtual std::ostream& print(std::ostream& ostr) const = 0;
-    friend std::ostream& operator<<(std::ostream& a, const SVG_Shape& b) {
+    friend std::ostream& operator<<(std::ostream& a, const SVG_Tag& b) {
         return b.print(a);
     }
 };
+
+struct SVG_Shape : SVG_Tag {};
+struct SVG_Def : SVG_Tag {};
 
 struct SVG_Line : SVG_Shape {
     double x1;
@@ -102,13 +105,45 @@ struct SVG_Text : SVG_Shape {
     }
 };
 
+struct SVG_LinearGradient : SVG_Def {
+    std::string id;
+    double x1;
+    double y1;
+    double x2;
+    double y2;
+    std::list<std::pair<double, std::string>> stops;
+
+    SVG_LinearGradient(std::string id, double x1, double y1, double x2,
+                       double y2,
+                       std::list<std::pair<double, std::string>> stops)
+        : id(std::move(id)), x1(x1), y1(y1), x2(x2), y2(y2),
+          stops(std::move(stops)) {}
+    SVG_LinearGradient(std::string id, double x1, double y1, double x2,
+                       double y2, std::string color1, std::string color2)
+        : id(std::move(id)), x1(x1), y1(y1), x2(x2), y2(y2),
+          stops({{0.0, std::move(color1)}, {100.0, std::move(color2)}}) {}
+
+    std::ostream& print(std::ostream& a) const override {
+        a << "<linearGradient id=\"" << id << "\" x1=\"" << x1 << "%\" y1=\""
+          << y1 << "%\" x2=\"" << x2 << "%\" y2=\"" << y2 << "%\">\n";
+        for (const std::pair<double, std::string>& stop : stops) {
+            a << "  <stop offset=\"" << stop.first << "%\" stop-color=\""
+              << stop.second << "\" />\n";
+        }
+        return a << "</linearGradient>";
+    }
+};
+
 struct SVG {
     size_t height;
     size_t width;
+    std::list<SVG_Def*> defs;
     std::list<SVG_Shape*> shapes;
 
     SVG(size_t height, size_t width) : height(height), width(width) {}
     ~SVG() {
+        for (SVG_Def* def : defs)
+            delete def;
         for (SVG_Shape* shape : shapes)
             delete shape;
     }
@@ -116,6 +151,12 @@ struct SVG {
     friend std::ostream& operator<<(std::ostream& a, const SVG& b) {
         a << "<svg xmlns=\"http://www.w3.org/2000/svg\" height=\"" << b.height
           << "\" width=\"" << b.width << "\">\n";
+        if (!b.defs.empty()) {
+            a << "<defs>\n";
+            for (const SVG_Def* def : b.defs)
+                a << *def << '\n';
+            a << "</defs>\n";
+        }
         for (const SVG_Shape* shape : b.shapes)
             a << *shape << '\n';
         return a << "</svg>";
