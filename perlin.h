@@ -1,3 +1,4 @@
+#pragma once
 //Retrieved from https://en.wikipedia.org/wiki/Perlin_noise#Implementation
 
 #include <math.h>

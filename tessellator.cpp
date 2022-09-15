@@ -78,9 +78,8 @@ std::pair<Coord, Coord> intersects(const Point* p1, const Point* p2,
     double base_y = (p1->y + p2->y) / 2 + a / 2 * dy;
     // b = that complicated square root in the link including 1/2
     double b = sqrt(2 * (r1 * r1 + r2 * r2) / R2 - a * a - 1) / 2;
-    return std::pair<std::pair<double, double>, std::pair<double, double>>(
-        {base_x + b * dy, base_y + b * -dx},
-        {base_x + b * -dy, base_y + b * dx});
+    return {{base_x + b * dy, base_y + b * -dx},
+            {base_x + b * -dy, base_y + b * dx}};
 }
 struct ExposedEdge {
     Point* a;
@@ -114,9 +113,15 @@ struct Triangle {
         poly.points = {{a->x, a->y}, {b->x, b->y}, {c->x, c->y}};
         double mx = (a->x + b->x + c->x) / 3 / (MAX_RADIUS * 4);
         double my = (a->y + b->y + c->y) / 3 / (MAX_RADIUS * 4);
-        poly.color = to_hsl(perlin(mx, my) * 180 + 180,
-                            perlin(mx, my + HEIGHT) * 20 + 80,
-                            perlin(mx + WIDTH, my) * 30 + 70);
+        double color =
+            fmod(perlin(mx / 4, my / 4) * 360 + 360 + perlin(mx, my) * 60, 360);
+        double saturation = fmod(perlin(mx, my + HEIGHT) * 0.7 +
+                                     perlin(mx * 4, my * 4 - HEIGHT) * 0.4,
+                                 1.0) *
+                                10 +
+                            90;
+        poly.color =
+            to_hsl(color, saturation, perlin(mx + WIDTH, my) * 20 + 50);
         return poly;
     }
 };
@@ -134,15 +139,16 @@ struct Space {
     std::vector<std::vector<std::list<Point*>>> arr;
 
     Space(double width, double height)
-        : width(width), height(height), cell_width(width / MAX_RADIUS),
-          cell_height(height / MAX_RADIUS),
+        : width(width), height(height),
+          cell_width((size_t)(width / MAX_RADIUS)),
+          cell_height((size_t)(height / MAX_RADIUS)),
           arr(cell_width, std::vector<std::list<Point*>>(cell_height,
                                                          std::list<Point*>())) {
     }
-    inline size_t get_cell_x(double x) {
+    inline size_t get_cell_x(double x) const {
         return cap_range<long long>(x / MAX_RADIUS, 0, cell_width - 1);
     }
-    inline size_t get_cell_y(double y) {
+    inline size_t get_cell_y(double y) const {
         return cap_range<long long>(y / MAX_RADIUS, 0, cell_height - 1);
     }
 
@@ -262,7 +268,7 @@ struct Space {
                 // Check if we can add any new edges
                 for (Point* p : get_neighbors(potential, 3)) {
                     if (!in_range(width, height, p->x, p->y))
-                        continue; // Don't make edges with poins out of range
+                        continue; // Don't make edges with points out of range
                     else if (p == all.back() || all.back()->links.count(p))
                         continue; // Only if there isn't already something
                     else if (p->dist2(potential) <

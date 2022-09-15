@@ -34,3 +34,8 @@ tessellator
 
 # Testing
 *.svg
+cmake-build*
+
+# Settings
+.idea/
+.vscode/

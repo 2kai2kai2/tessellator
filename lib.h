@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cmath>
 #include <list>
 #include <string>
@@ -31,8 +33,9 @@ inline std::string to_hsl(double hue, double saturation, double light) {
     hue = fmod(fabs(hue), 360);
     saturation = cap_range(saturation, 0.0, 100.0);
     light = cap_range(light, 0.0, 100.0);
-    return "hsl(" + std::to_string(hue) + ", " + std::to_string(saturation) +
-           "%, " + std::to_string(light) + "%)";
+    return "hsl(" + std::to_string(std::round(hue * 10) / 10.0) + ", " +
+           std::to_string(std::round(saturation * 10) / 10.0) + "%, " +
+           std::to_string(std::round(light * 10) / 10.0) + "%)";
 }
 
 inline bool in_range(double width, double height, double x, double y) {

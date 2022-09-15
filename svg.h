@@ -1,10 +1,13 @@
+#pragma once
+
 #include <fstream>
 #include <iostream>
 #include <list>
 #include <set>
+#include <utility>
 
 struct SVG_Shape {
-    virtual ~SVG_Shape() {}
+    virtual ~SVG_Shape() = default;
 
     virtual std::ostream& print(std::ostream& ostr) const = 0;
     friend std::ostream& operator<<(std::ostream& a, const SVG_Shape& b) {
@@ -88,9 +91,8 @@ struct SVG_Text : SVG_Shape {
     std::string text;
     std::string color;
 
-    SVG_Text(double x, double y, const std::string& text,
-             const std::string& color = "")
-        : x(x), y(y), text(text), color(color) {}
+    SVG_Text(double x, double y, std::string text, std::string color = "")
+        : x(x), y(y), text(std::move(text)), color(std::move(color)) {}
 
     std::ostream& print(std::ostream& a) const override {
         a << "<text x=\"" << x << "\" y=\"" << y << '"';
