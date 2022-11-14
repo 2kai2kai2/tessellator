@@ -34,7 +34,10 @@ tessellator
 
 # Testing
 *.svg
-cmake-build*
+!examples/*.svg
+
+cmake-build-debug/
+build/
 
 # Settings
 .idea/
